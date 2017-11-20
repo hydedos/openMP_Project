@@ -1,7 +1,7 @@
 all: openmp
 
 openmp: openmp.c
-	gcc openmp.c -O3 -Wall -g -o openmp
+	gcc -fopenmp openmp.c -O3 -Wall -g -o openmp
 
 .PHONY: clean
 clean:

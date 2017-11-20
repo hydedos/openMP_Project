@@ -8,6 +8,7 @@
 #include <limits.h>
 #include <stdbool.h>
 #include <math.h>
+# include <omp.h>
 #define IDX(x, i, j) ((i)*(x)+(j))
 int x, y;
 int columns;
@@ -21,36 +22,42 @@ void *worker(int eps) {
 
     double temp = 0.0;
 
+    #pragma omp parallel private (i, j, temp) shared(numIters, grid1, grid2)
+    #pragma omp reduction(max: maxdiff)
     while (maxdiff > eps) {
-        for (int i = 1; i < columns; i++) {
-          for (int j = 1; j < rows; j++) {
-            grid2[IDX(x,i,j)] = (grid1[IDX(x,i-1,j)] + grid1[IDX(x,i+1,j)] +
-                     grid1[IDX(x,i,j-1)] + grid1[IDX(x,i,j+1)]) * 0.25;
-          }
+      #pragma omp for
+      for (int i = 1; i < columns; i++) {
+        for (int j = 1; j < rows; j++) {
+          grid2[IDX(x,i,j)] = (grid1[IDX(x,i-1,j)] + grid1[IDX(x,i+1,j)] +
+                   grid1[IDX(x,i,j-1)] + grid1[IDX(x,i,j+1)]) * 0.25;
         }
-        numIters++;
-        for (int i = 1; i < columns; i++) {
-          for (int j = 1; j < rows; j++) {
-            grid1[IDX(x,i,j)] = (grid2[IDX(x,i-1,j)] + grid2[IDX(x,i+1,j)] +
-                     grid2[IDX(x,i,j-1)] + grid2[IDX(x,i,j+1)]) * 0.25;
-          }
+      }
+      //numIters++;
+      #pragma omp for
+      for (int i = 1; i < columns; i++) {
+        for (int j = 1; j < rows; j++) {
+          grid1[IDX(x,i,j)] = (grid2[IDX(x,i-1,j)] + grid2[IDX(x,i+1,j)] +
+                   grid2[IDX(x,i,j-1)] + grid2[IDX(x,i,j+1)]) * 0.25;
         }
-        numIters++;
-
-        // maxdiff reduction calculation
-        /* compute the maximum difference into global variable */
-        maxdiff=0;
-        for (int i = 1; i < columns; i++) {
-          for (int j = 1; j < rows; j++) {
-            temp = grid1[IDX(x,i,j)]-grid2[IDX(x,i,j)];
-            if (temp < 0)
-              temp = -temp;
-            if (maxdiff <  temp)
-              maxdiff = temp;
-          }
+      }
+      #pragma omp single {
+      numIters = numIters + 2;
+      }
+      // maxdiff reduction calculation
+      /* compute the maximum difference into global variable */
+      maxdiff=0;
+      #pragma omp for
+      for (int i = 1; i < columns; i++) {
+        for (int j = 1; j < rows; j++) {
+          temp = grid1[IDX(x,i,j)]-grid2[IDX(x,i,j)];
+          if (temp < 0)
+            temp = -temp;
+          if (maxdiff <  temp)
+            maxdiff = temp;
         }
+      }
     }
-    return NULL;
+  return NULL;
 }
 void InitializeGrids(double *grid1, double *startgrid1, double *grid2, double *startgrid2) {
   int i, j;
@@ -137,7 +144,7 @@ int main(int argc, char* argv[]) {
     printf("Converged after %d iterations\n", numIters);
     for (int i = 0; i < x; i++) {
         for (int j = 0; j < y; j++) {
-            printf("%lf ", grid2[IDX(x,i,j)]));
+            printf("%lf ", grid2[IDX(x,i,j)]);
         }
         printf("\n");
     }

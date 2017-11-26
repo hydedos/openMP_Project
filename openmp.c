@@ -8,7 +8,7 @@
 #include <limits.h>
 #include <stdbool.h>
 #include <math.h>
-# include <omp.h>
+#include <omp.h>
 #define IDX(x, i, j) ((i)*(x)+(j))
 int x, y;
 int columns;
@@ -18,37 +18,39 @@ double *grid2;
 double maxdiff = 99999.9;
 int numIters = 0;
 
-void *worker(int eps) {
+void *worker(int eps, int thread_count) {
 
     double temp = 0.0;
+    int i, j;
 
-    #pragma omp parallel private (i, j, temp) shared(numIters, grid1, grid2)
-    #pragma omp reduction(max: maxdiff)
+    #pragma omp parallel num_threads(thread_count) shared(numIters, grid1, grid2)
+    //#pragma omp
     while (maxdiff > eps) {
-      #pragma omp for
-      for (int i = 1; i < columns; i++) {
-        for (int j = 1; j < rows; j++) {
+      #pragma omp for private (i, j, temp) reduction(max: maxdiff)
+      for (i = 1; i < columns; i++) {
+        for (j = 1; j < rows; j++) {
           grid2[IDX(x,i,j)] = (grid1[IDX(x,i-1,j)] + grid1[IDX(x,i+1,j)] +
                    grid1[IDX(x,i,j-1)] + grid1[IDX(x,i,j+1)]) * 0.25;
         }
       }
       //numIters++;
       #pragma omp for
-      for (int i = 1; i < columns; i++) {
-        for (int j = 1; j < rows; j++) {
+      for (i = 1; i < columns; i++) {
+        for (j = 1; j < rows; j++) {
           grid1[IDX(x,i,j)] = (grid2[IDX(x,i-1,j)] + grid2[IDX(x,i+1,j)] +
                    grid2[IDX(x,i,j-1)] + grid2[IDX(x,i,j+1)]) * 0.25;
         }
       }
-      #pragma omp single {
+      #pragma omp single
+      {
       numIters = numIters + 2;
       }
       // maxdiff reduction calculation
       /* compute the maximum difference into global variable */
       maxdiff=0;
       #pragma omp for
-      for (int i = 1; i < columns; i++) {
-        for (int j = 1; j < rows; j++) {
+      for (i = 1; i < columns; i++) {
+        for (j = 1; j < rows; j++) {
           temp = grid1[IDX(x,i,j)]-grid2[IDX(x,i,j)];
           if (temp < 0)
             temp = -temp;
@@ -98,8 +100,8 @@ int main(int argc, char* argv[]) {
     rows = x - 1;
     columns = y - 1;
 
-    grid1=(double *) malloc(sizeof(double) * x * y);
-    grid2=(double *) malloc(sizeof(double) * x * y);
+    grid1 = (double *) malloc(sizeof(double) * x * y);
+    grid2 = (double *) malloc(sizeof(double) * x * y);
     double* matrix_1 = malloc(sizeof(double) * x * y);
     double* matrix_2 = malloc(sizeof(double) * x * y);
 
@@ -135,7 +137,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Start computation here
-    worker(epsilon);
+    worker(epsilon, threads);
 
     gettimeofday(&end, NULL);
     timersub(&end, &start, &result);

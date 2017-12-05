@@ -148,9 +148,6 @@ int main(int argc, char* argv[]) {
   /* ceanup MPI */
   MPI_Finalize();
 
-  // Start computation here
-
-
   gettimeofday(&end, NULL);
   timersub(&end, &start, &result);
 
@@ -168,4 +165,11 @@ int main(int argc, char* argv[]) {
 
   fprintf(stderr, "%d, %lf, %d, %2ld, %7ld\n", threads, epsilon, numIters, result.tv_sec, result.tv_usec);
   return 0;
+}
+
+static void Coordinator(int numWorkers, int stripSize, int gridSize) {
+  /* distribute initial work */
+  
+
+  /* until converged, keep checking maxdifs from workers */
 }

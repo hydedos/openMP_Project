@@ -126,7 +126,7 @@ int main(int argc, char* argv[]) {
   struct timeval end;
   struct timeval result;
   gettimeofday(&start, NULL);
-  
+
   /* print the grid we read in */
   for (int i = 0; i < x; i++) {
     for (int j = 0; j < y; j++) {
@@ -169,7 +169,10 @@ int main(int argc, char* argv[]) {
 
 static void Coordinator(int numWorkers, int stripSize, int gridSize) {
   /* distribute initial work */
-  
+  /*
+  w_data[i].start_idx = i * (rows - 2) / threads + 1;
+  w_data[i].end_idx = ((i + 1) * (rows - 2)) / threads + 1;
+  */
 
   /* until converged, keep checking maxdifs from workers */
 }

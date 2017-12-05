@@ -9,7 +9,9 @@
 #include <stdbool.h>
 #include <math.h>
 #include <omp.h>
+#include <mpi.h>
 #define IDX(x, i, j) ((i)*(x)+(j))
+#define COORDINATOR 0
 int x, y;
 int columns;
 int rows;
@@ -20,19 +22,20 @@ int numIters = 0;
 
 
 void *worker(int thread_count, double eps) {
-    int i, j;
-    double temp = 0.0;
+  int i, j;
+  double temp = 0.0;
 
-    #pragma omp parallel num_threads(thread_count) shared(numIters, grid1, grid2)
-    {
+  #pragma omp parallel num_threads(thread_count) shared(numIters, grid1, grid2)
+  {
     while (maxdiff > eps) {
-      #pragma omp for private (i, j, temp)
+    #pragma omp for private (i, j, temp)
       for (i = 1; i < columns; i++) {
         for (j = 1; j < rows; j++) {
           grid2[IDX(x,i,j)] = (grid1[IDX(x,i-1,j)] + grid1[IDX(x,i+1,j)] +
                    grid1[IDX(x,i,j-1)] + grid1[IDX(x,i,j+1)]) * 0.25;
         }
       }
+
       #pragma omp for private (i, j, temp)
       for (i = 1; i < columns; i++) {
         for (j = 1; j < rows; j++) {
@@ -43,7 +46,7 @@ void *worker(int thread_count, double eps) {
       //
       #pragma omp single
       {
-      numIters = numIters + 2;
+        numIters = numIters + 2;
       }
       // maxdiff reduction calculation
       /* compute the maximum difference into global variable */
@@ -88,56 +91,81 @@ void InitializeGrids(double *grid1, double *startgrid1, double *grid2, double *s
   }
 
 int main(int argc, char* argv[]) {
+  /* mpi variables */
+  int myid;
+  int numWorkers;
+  /* setup MPI */
+  MPI_Init(&argc, &argv);
+  MPI_Comm_rank(MPI_COMM_WORLD, &myid);  /* what is my id (rank)? */
+  MPI_Comm_size(MPI_COMM_WORLD, &numWorkers);  /* how many processes? */
+  numWorkers--;   /* one coordinator, the other processes are workers */
 
-    if (argc != 5) {
-        fprintf(stderr, "Usage:\n%s <threads> <epsilon> <rows> <columns>\n", argv[0]);
-        exit(1);
+  if (argc != 5) {
+    fprintf(stderr, "Usage:\n%s <threads> <epsilon> <rows> <columns>\n", argv[0]);
+    exit(1);
+  }
+
+  int threads = atoi(argv[1]);
+  double epsilon = atof(argv[2]);
+  x = atoi(argv[3]);
+  y = atoi(argv[4]);
+  rows = x - 1;
+  columns = y - 1;
+
+  /* allocate memory for two grids */
+  grid1=(double *) malloc(sizeof(double) * x * y);
+  grid2=(double *) malloc(sizeof(double) * x * y);
+  double* matrix_1 = malloc(sizeof(double) * x * y);
+  double* matrix_2 = malloc(sizeof(double) * x * y);
+
+  /* read grid from standard in */
+  InitializeGrids(grid1,matrix_1,grid2,matrix_2);
+
+  /* timing code for benchmarks */
+  struct timeval start;
+  struct timeval end;
+  struct timeval result;
+  gettimeofday(&start, NULL);
+  
+  /* print the grid we read in */
+  for (int i = 0; i < x; i++) {
+    for (int j = 0; j < y; j++) {
+      printf("%lf ", grid1[IDX(x,i,j)]);
     }
+    printf("\n");
+  }
 
-    int threads = atoi(argv[1]);
-    double epsilon = atof(argv[2]);
-    x = atoi(argv[3]);
-    y = atoi(argv[4]);
-    rows = x - 1;
-    columns = y - 1;
+  if (myid == COORDINATOR) {
+    /* do coordinator stuff*/
+    /* distribute initial grids */
 
-    grid1=(double *) malloc(sizeof(double) * x * y);
-    grid2=(double *) malloc(sizeof(double) * x * y);
-    double* matrix_1 = malloc(sizeof(double) * x * y);
-    double* matrix_2 = malloc(sizeof(double) * x * y);
-
-    InitializeGrids(grid1,matrix_1,grid2,matrix_2);
-
-    struct timeval start;
-    struct timeval end;
-    struct timeval result;
-
-    gettimeofday(&start, NULL);
-    for (int i = 0; i < x; i++) {
-        for (int j = 0; j < y; j++) {
-            printf("%lf ", grid1[IDX(x,i,j)]);
-        }
-        printf("\n");
-    }
-
-    // Start computation here
+    /* check max difs */
+  } else {
+    /* do worker stuff */
     worker(threads, epsilon);
+  }
 
-    gettimeofday(&end, NULL);
-    timersub(&end, &start, &result);
+  /* ceanup MPI */
+  MPI_Finalize();
+
+  // Start computation here
 
 
-    printf("Converged after %d iterations\n", numIters);
-    for (int i = 0; i < x; i++) {
-        for (int j = 0; j < y; j++) {
-            printf("%lf ", grid1[IDX(x,i,j)]);
-        }
-        printf("\n");
+  gettimeofday(&end, NULL);
+  timersub(&end, &start, &result);
+
+  /* print final grid */
+  printf("Converged after %d iterations\n", numIters);
+  for (int i = 0; i < x; i++) {
+    for (int j = 0; j < y; j++) {
+      printf("%lf ", grid1[IDX(x,i,j)]);
     }
+    printf("\n");
+  }
 
-    free(matrix_1);
-    free(matrix_2);
+  free(matrix_1);
+  free(matrix_2);
 
-    fprintf(stderr, "%d, %lf, %d, %2ld, %7ld\n", threads, epsilon, numIters, result.tv_sec, result.tv_usec);
-    return 0;
+  fprintf(stderr, "%d, %lf, %d, %2ld, %7ld\n", threads, epsilon, numIters, result.tv_sec, result.tv_usec);
+  return 0;
 }

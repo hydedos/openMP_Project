@@ -23,14 +23,62 @@ int numIters = 0;
 static void Coordinator(int numWorkers, int x, int y);
 
 
-void *worker(int thread_count, double eps) {
+void *worker(int id, int numWorkers, int thread_count, double eps) {
   /* MPI test */
   int test;
   MPI_Status status;
   MPI_Recv(&test, 1, MPI_INT, COORDINATOR, 0, MPI_COMM_WORLD, &status);
   printf("got value: %d", test);
+
+  printf("id: %d, recv down", id);
+
+  if (id % 2 == 0) {
+    /* recv down */
+    if (id > 1) {
+      MPI_Recv(&test, 1, MPI_INT, id-1, 0, MPI_COMM_WORLD, &status);
+    } 
+    /* recv up */
+    if (id < numWorkers-1) {
+      MPI_Recv(&test, 1, MPI_INT, id+1, 0, MPI_COMM_WORLD, &status);
+    }
+
+    /* send down */
+    if (id > 1) {
+      MPI_Send(&test, 1, MPI_INT, id-1, 0, MPI_COMM_WORLD);
+    }
+    /* send up */
+    if (id < numWorkers -1) {
+      MPI_Send(&test, 1, MPI_INT, id+1, 0, MPI_COMM_WORLD);
+    }
+    /* rec down recv up
+       send down send up */
+  } else {
+    /* send up */
+    if (id < numWorkers -1) {
+      MPI_Send(&test, 1, MPI_INT, id+1, 0, MPI_COMM_WORLD);
+    }
+    /* send down */
+    if (id > 1) {
+      MPI_Send(&test, 1, MPI_INT, id-1, 0, MPI_COMM_WORLD);
+    }
+    
+    /* recv up */
+    if (id < numWorkers-1) {
+      MPI_Recv(&test, 1, MPI_INT, id+1, 0, MPI_COMM_WORLD, &status);
+    }
+    /* recv down */
+    if (id > 1) {
+      MPI_Recv(&test, 1, MPI_INT, id-1, 0, MPI_COMM_WORLD, &status);
+    } 
+
+    /* send up send down
+    recv up rev down*/
+
+  }
+
   return NULL;
   /* end MPI Test*/
+
   int i, j;
   double temp = 0.0;
 
@@ -107,7 +155,6 @@ int main(int argc, char* argv[]) {
   MPI_Init(&argc, &argv);
   MPI_Comm_rank(MPI_COMM_WORLD, &myid);  /* what is my id (rank)? */
   MPI_Comm_size(MPI_COMM_WORLD, &numWorkers);  /* how many processes? */
-  numWorkers--;   /* one coordinator, the other processes are workers */
 
   if (argc != 5) {
     fprintf(stderr, "Usage:\n%s <threads> <epsilon> <rows> <columns>\n", argv[0]);
@@ -152,7 +199,7 @@ int main(int argc, char* argv[]) {
     /* check max difs */
   } else {
     /* do worker stuff */
-    worker(threads, epsilon);
+    worker(myid, numWorkers, threads, epsilon);
   }
 
   /* ceanup MPI */
@@ -179,7 +226,7 @@ int main(int argc, char* argv[]) {
 
 static void Coordinator(int numWorkers, int x, int y) {
   int test = 10;
-  for (int i = 1; i <= numWorkers; i++) {
+  for (int i = 1; i < numWorkers; i++) {
     MPI_Send(&test, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
     test++;
   }

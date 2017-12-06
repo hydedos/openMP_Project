@@ -20,8 +20,17 @@ double *grid2;
 double maxdiff = 99999.9;
 int numIters = 0;
 
+static void Coordinator(int numWorkers, int x, int y);
+
 
 void *worker(int thread_count, double eps) {
+  /* MPI test */
+  int test;
+  MPI_Status status;
+  MPI_Recv(&test, 1, MPI_INT, COORDINATOR, 0, MPI_COMM_WORLD, &status);
+  printf("got value: %d", test);
+  return NULL;
+  /* end MPI Test*/
   int i, j;
   double temp = 0.0;
 
@@ -119,7 +128,7 @@ int main(int argc, char* argv[]) {
   double* matrix_2 = malloc(sizeof(double) * x * y);
 
   /* read grid from standard in */
-  InitializeGrids(grid1,matrix_1,grid2,matrix_2);
+  // InitializeGrids(grid1,matrix_1,grid2,matrix_2);
 
   /* timing code for benchmarks */
   struct timeval start;
@@ -128,14 +137,15 @@ int main(int argc, char* argv[]) {
   gettimeofday(&start, NULL);
 
   /* print the grid we read in */
-  for (int i = 0; i < x; i++) {
-    for (int j = 0; j < y; j++) {
-      printf("%lf ", grid1[IDX(x,i,j)]);
-    }
-    printf("\n");
-  }
+  // for (int i = 0; i < x; i++) {
+  //   for (int j = 0; j < y; j++) {
+  //     printf("%lf ", grid1[IDX(x,i,j)]);
+  //   }
+  //   printf("\n");
+  // }
 
   if (myid == COORDINATOR) {
+    Coordinator(numWorkers, x, y);
     /* do coordinator stuff*/
     /* distribute initial grids */
 
@@ -152,13 +162,13 @@ int main(int argc, char* argv[]) {
   timersub(&end, &start, &result);
 
   /* print final grid */
-  printf("Converged after %d iterations\n", numIters);
-  for (int i = 0; i < x; i++) {
-    for (int j = 0; j < y; j++) {
-      printf("%lf ", grid1[IDX(x,i,j)]);
-    }
-    printf("\n");
-  }
+  // printf("Converged after %d iterations\n", numIters);
+  // for (int i = 0; i < x; i++) {
+  //   for (int j = 0; j < y; j++) {
+  //     printf("%lf ", grid1[IDX(x,i,j)]);
+  //   }
+  //   printf("\n");
+  // }
 
   free(matrix_1);
   free(matrix_2);
@@ -167,8 +177,14 @@ int main(int argc, char* argv[]) {
   return 0;
 }
 
-static void Coordinator(int numWorkers, int stripSize, int gridSize) {
+static void Coordinator(int numWorkers, int x, int y) {
+  int test = 10;
+  for (int i = 1; i <= numWorkers; i++) {
+    MPI_Send(&test, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+    test++;
+  }
   /* distribute initial work */
+
   /*
   w_data[i].start_idx = i * (rows - 2) / threads + 1;
   w_data[i].end_idx = ((i + 1) * (rows - 2)) / threads + 1;

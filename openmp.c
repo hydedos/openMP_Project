@@ -10,139 +10,193 @@
 #include <math.h>
 #include <omp.h>
 #include <mpi.h>
+#include <string.h>
 #define IDX(x, i, j) ((i)*(x)+(j))
 #define COORDINATOR 0
 int x, y;
 int columns;
 int rows;
-double *grid1;
-double *grid2;
 double maxdiff = 99999.9;
 int numIters = 0;
 
-static void Coordinator(int numWorkers, int x, int y);
+static void Coordinator(int numWorkers, int x, int y, double epsilon);
+void printGrid(double *grid, int x, int y);
+
+struct slices calculateSlice(int worker_id, int num_workers);
+
+/* holds slice information */
+struct slices {
+  int from;
+  int to;
+};
 
 
 void *worker(int id, int numWorkers, int thread_count, double eps) {
-  /* MPI test */
-  int test;
-  MPI_Status status;
-  MPI_Recv(&test, 1, MPI_INT, COORDINATOR, 0, MPI_COMM_WORLD, &status);
-  printf("got value: %d", test);
+  /* get slice information */
+  struct slices slice = calculateSlice(id-1, numWorkers);
+  int height = slice.to - slice.from + 2;
 
-  printf("id: %d, recv down", id);
+   // allocate memory for own share of grid 
+  double *grid1; 
+  double *grid2;
+  grid1 = (double *) malloc(sizeof(double) * x * height);
+  grid2 = (double *) malloc(sizeof(double) * x * height);
+  /* get grid from cooridnator */
+  MPI_Recv(grid1, x * height, MPI_DOUBLE, COORDINATOR, 0, MPI_COMM_WORLD, NULL);
+  memcpy(grid2, grid1, x*height*sizeof(double));
 
-  if (id % 2 == 0) {
-    /* recv down */
-    if (id > 1) {
-      MPI_Recv(&test, 1, MPI_INT, id-1, 0, MPI_COMM_WORLD, &status);
-    } 
-    /* recv up */
-    if (id < numWorkers-1) {
-      MPI_Recv(&test, 1, MPI_INT, id+1, 0, MPI_COMM_WORLD, &status);
-    }
+  printGrid(grid1, x, height);
 
-    /* send down */
-    if (id > 1) {
-      MPI_Send(&test, 1, MPI_INT, id-1, 0, MPI_COMM_WORLD);
-    }
-    /* send up */
-    if (id < numWorkers -1) {
-      MPI_Send(&test, 1, MPI_INT, id+1, 0, MPI_COMM_WORLD);
-    }
-    /* rec down recv up
-       send down send up */
-  } else {
-    /* send up */
-    if (id < numWorkers -1) {
-      MPI_Send(&test, 1, MPI_INT, id+1, 0, MPI_COMM_WORLD);
-    }
-    /* send down */
-    if (id > 1) {
-      MPI_Send(&test, 1, MPI_INT, id-1, 0, MPI_COMM_WORLD);
-    }
-    
-    /* recv up */
-    if (id < numWorkers-1) {
-      MPI_Recv(&test, 1, MPI_INT, id+1, 0, MPI_COMM_WORLD, &status);
-    }
-    /* recv down */
-    if (id > 1) {
-      MPI_Recv(&test, 1, MPI_INT, id-1, 0, MPI_COMM_WORLD, &status);
-    } 
+  int bottom_row_index = (slice.from - 1) * x; 
+  int top_row_index = (slice.to) * x;
 
-    /* send up send down
-    recv up rev down*/
+  double *bottom_pointer = grid1 + bottom_row_index;
+  double *top_pointer = grid1 + top_row_index;
 
-  }
+  printf("id=%d, bottom index=%d, top_index=%d\n", id, bottom_row_index, top_row_index);
+  printf("x=%d, slice.from=%d, slice.to=%d\n", x, slice.from, slice.to);
 
-  return NULL;
+
+
   /* end MPI Test*/
 
   int i, j;
   double temp = 0.0;
+  int notConverged = 1;
 
   #pragma omp parallel num_threads(thread_count) shared(numIters, grid1, grid2)
   {
-    while (maxdiff > eps) {
+    printf("doing calculations \n");
+    while (notConverged) {
     #pragma omp for private (i, j, temp)
-      for (i = 1; i < columns; i++) {
-        for (j = 1; j < rows; j++) {
+      for (i = 1; i < height-1; i++) {
+        for (j = 1; j < columns-1; j++) {
           grid2[IDX(x,i,j)] = (grid1[IDX(x,i-1,j)] + grid1[IDX(x,i+1,j)] +
                    grid1[IDX(x,i,j-1)] + grid1[IDX(x,i,j+1)]) * 0.25;
         }
       }
 
-      #pragma omp for private (i, j, temp)
-      for (i = 1; i < columns; i++) {
-        for (j = 1; j < rows; j++) {
-          grid1[IDX(x,i,j)] = (grid2[IDX(x,i-1,j)] + grid2[IDX(x,i+1,j)] +
-                   grid2[IDX(x,i,j-1)] + grid2[IDX(x,i,j+1)]) * 0.25;
-        }
-      }
-      //
+    printf("swapping grids\n");
+
+
+
+      /* increase iteration count */
       #pragma omp single
       {
-        numIters = numIters + 2;
+        numIters = numIters + 1;
+          /* swap grids */
+        double *tempGrid = grid1;
+        grid1 = grid2;
+        grid2 = tempGrid;
       }
-      // maxdiff reduction calculation
+
+      printf("sending grids\n");
+
+      #pragma omp single 
+      {
+        /* send top and bottom rows */
+        if (id % 2 == 0) {
+          /* recv down */
+          if (id > 1) {
+            printf("recv down\n");
+            MPI_Recv(bottom_pointer, x, MPI_DOUBLE, id-1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+          } 
+          /* recv up */
+          if (id < numWorkers) {
+            printf("recv up\n");
+            MPI_Recv(top_pointer, x, MPI_DOUBLE, id+1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+          }
+
+          /* send down */
+          if (id > 1) {
+            printf("send down\n");
+            MPI_Send(bottom_pointer, x, MPI_DOUBLE, id-1, 0, MPI_COMM_WORLD);
+          }
+          /* send up */
+          if (id < numWorkers) {
+            printf("send up\n");
+            MPI_Send(top_pointer, x, MPI_DOUBLE, id+1, 0, MPI_COMM_WORLD);
+          }
+          /* rec down recv up
+             send down send up */
+        } else {
+          /* send up */
+          if (id < numWorkers) {
+            printf("send up\n");
+            MPI_Send(top_pointer, x, MPI_DOUBLE, id+1, 0, MPI_COMM_WORLD);
+          }
+          /* send down */
+          if (id > 1) {
+            printf("send down\n");
+            MPI_Send(bottom_pointer, x, MPI_DOUBLE, id-1, 0, MPI_COMM_WORLD);
+          }
+          
+          /* recv up */
+          if (id < numWorkers) {
+            printf("recv up\n");
+            MPI_Recv(top_pointer, x, MPI_DOUBLE, id+1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+          }
+          /* recv down */
+          if (id > 1) {
+            printf("recv down\n");
+            MPI_Recv(bottom_pointer, x, MPI_DOUBLE, id-1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+          } 
+        }
+      }
+      
       /* compute the maximum difference into global variable */
+      printf("reducing shit\n");
+
       maxdiff=0;
       #pragma omp for reduction(max: maxdiff)
-      for (i = 1; i < columns; i++) {
-        for (j = 1; j < rows; j++) {
+      for (i = 1; i < height-2; i++) {
+        for (j = 1; j < columns-1; j++) {
           temp = grid1[IDX(x,i,j)]-grid2[IDX(x,i,j)];
+          printf("value of 1: %f\n", grid1[IDX(x,i,j)]);
+          printf("value of 2: %f\n", grid2[IDX(x,i,j)]);
           if (temp < 0)
             temp = -temp;
           if (maxdiff <  temp)
             maxdiff = temp;
         }
       }
+
+      /* communicate using MPI */
+      #pragma omp single
+      {
+        printf("sending local max dif=%f\n", maxdiff);
+        /* send max diff */
+        MPI_Send(&maxdiff, 1, MPI_DOUBLE, COORDINATOR, 0, MPI_COMM_WORLD);
+        /* find out if we converged */
+        printf("sent, about to recv\n");
+        MPI_Bcast(&notConverged, 1, MPI_INT, COORDINATOR, MPI_COMM_WORLD);
+      
+        printf("notconverged=%d\n", notConverged);
+      }
     }
   }
+
+  /* send grid to coordiinator */
+    MPI_Send(grid1+x, x * (height-2), MPI_DOUBLE, COORDINATOR, 0, MPI_COMM_WORLD);
+
+
   return NULL;
 }
-void InitializeGrids(double *grid1, double *startgrid1, double *grid2, double *startgrid2) {
+void InitializeGrids(double *grid1) {
+  /* open file */
+  char mode = 'r';
+  FILE *f = fopen("testMatrixes/ones10.mtx", &mode);
+
   int i, j;
   double d;
   //printf("Started initializing grids\n");
   for (i = 0; i < y; i++)
     for (j = 0; j < x; j++) {
-      if (!scanf("%lg",&d)) {
+      if (!fscanf(f, "%lg",&d)) {
         perror("scanf");
         exit(1);
       }
       grid1[IDX(x,i,j)] = d;
-      startgrid1[IDX(x,i,j)] = d;
-      /* put the boundary values into the second grid as well they never change      */
-    if ((j == 0) || (j == columns) || (i == 0) || (i == rows)) {
-      grid2[IDX(x,i,j)] = grid1[IDX(x,i,j)];
-      startgrid2[IDX(x,i,j)] = grid1[IDX(x,i,j)];
-    } else {
-      grid2[IDX(x,i,j)] = 0.0;
-      startgrid2[IDX(x,i,j)] = 0.0;
-    } // don't really need to do this but I want clean numbers on
-      // debug output
     }
     //printf("Finished initializing grids");
   }
@@ -155,6 +209,7 @@ int main(int argc, char* argv[]) {
   MPI_Init(&argc, &argv);
   MPI_Comm_rank(MPI_COMM_WORLD, &myid);  /* what is my id (rank)? */
   MPI_Comm_size(MPI_COMM_WORLD, &numWorkers);  /* how many processes? */
+  numWorkers--;
 
   if (argc != 5) {
     fprintf(stderr, "Usage:\n%s <threads> <epsilon> <rows> <columns>\n", argv[0]);
@@ -165,17 +220,13 @@ int main(int argc, char* argv[]) {
   double epsilon = atof(argv[2]);
   x = atoi(argv[3]);
   y = atoi(argv[4]);
-  rows = x - 1;
-  columns = y - 1;
+  rows = y;
+  columns = x;
 
-  /* allocate memory for two grids */
-  grid1=(double *) malloc(sizeof(double) * x * y);
-  grid2=(double *) malloc(sizeof(double) * x * y);
-  double* matrix_1 = malloc(sizeof(double) * x * y);
-  double* matrix_2 = malloc(sizeof(double) * x * y);
+
 
   /* read grid from standard in */
-  // InitializeGrids(grid1,matrix_1,grid2,matrix_2);
+  // 
 
   /* timing code for benchmarks */
   struct timeval start;
@@ -183,16 +234,8 @@ int main(int argc, char* argv[]) {
   struct timeval result;
   gettimeofday(&start, NULL);
 
-  /* print the grid we read in */
-  // for (int i = 0; i < x; i++) {
-  //   for (int j = 0; j < y; j++) {
-  //     printf("%lf ", grid1[IDX(x,i,j)]);
-  //   }
-  //   printf("\n");
-  // }
-
   if (myid == COORDINATOR) {
-    Coordinator(numWorkers, x, y);
+    Coordinator(numWorkers, x, y, epsilon);
     /* do coordinator stuff*/
     /* distribute initial grids */
 
@@ -208,34 +251,95 @@ int main(int argc, char* argv[]) {
   gettimeofday(&end, NULL);
   timersub(&end, &start, &result);
 
-  /* print final grid */
-  // printf("Converged after %d iterations\n", numIters);
-  // for (int i = 0; i < x; i++) {
-  //   for (int j = 0; j < y; j++) {
-  //     printf("%lf ", grid1[IDX(x,i,j)]);
-  //   }
-  //   printf("\n");
-  // }
 
-  free(matrix_1);
-  free(matrix_2);
+
 
   fprintf(stderr, "%d, %lf, %d, %2ld, %7ld\n", threads, epsilon, numIters, result.tv_sec, result.tv_usec);
   return 0;
 }
 
-static void Coordinator(int numWorkers, int x, int y) {
-  int test = 10;
-  for (int i = 1; i < numWorkers; i++) {
-    MPI_Send(&test, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-    test++;
+static void Coordinator(int numWorkers, int x, int y, double epsilon) {
+  /* allocate memory for two grids */
+  double *grid1;
+  grid1=(double *) malloc(sizeof(double) * x * y);
+     
+  /* read grid from standard in */
+  InitializeGrids(grid1);
+    
+   // send grid slices to workers 
+  for (int i = 1; i <= numWorkers; i++) {
+    struct slices slice = calculateSlice(i-1, numWorkers);
+    int index = (slice.from-1) * x;
+    int count = slice.to - slice.from + 2;
+    printf("attmepting to send to id=%d\n", i);
+    MPI_Send(
+      grid1+index,
+      count * x,
+      MPI_DOUBLE,
+      i,
+      0,
+      MPI_COMM_WORLD);
   }
-  /* distribute initial work */
-
-  /*
-  w_data[i].start_idx = i * (rows - 2) / threads + 1;
-  w_data[i].end_idx = ((i + 1) * (rows - 2)) / threads + 1;
-  */
 
   /* until converged, keep checking maxdifs from workers */
+  int notConverged = 1;
+  double maxDiff = 0;
+  double nodeDiff = 0;
+  while (notConverged) {
+      for (int i = 1; i <= numWorkers; i++) {
+        MPI_Recv(&nodeDiff, 1, MPI_DOUBLE, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        if (i == 1) {
+          maxDiff = nodeDiff;
+        } else {
+          if (nodeDiff > maxDiff) {
+            maxDiff = nodeDiff;
+          }
+        }
+      }
+
+      printf("maxdif=%f\n", maxDiff);
+      if (maxDiff < epsilon) {
+        notConverged = 0;
+      }
+
+      /* send convergence info to all nodes */
+      MPI_Bcast(
+        &notConverged,
+        1,
+        MPI_INT,
+        COORDINATOR,
+        MPI_COMM_WORLD);
+  }  
+    printf("fnished loop, gonna get hcunks now\n");
+
+  /* collect chunks */
+  for (int i = 1; i <= numWorkers; i++) {
+    printf("collecting chunk from id=%d\n", i);
+    struct slices slice = calculateSlice(i-1, numWorkers);
+    int index = (slice.from-1) * x;
+    int count = slice.to - slice.from;
+    MPI_Recv(grid1 + index, count * x, MPI_DOUBLE, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+  }
+
+
+  printGrid(grid1, x, y);
+
+  free(grid1);
+}
+
+void printGrid(double *grid, int x, int y) {
+  for (int i = 0; i < y; i++) {
+    for (int j = 0; j < x; j++) {
+      printf("%lf ", grid[IDX(x,i,j)]);
+    }
+    printf("\n");
+  }
+}
+
+/* assumes worker_id starts at zero*/
+struct slices calculateSlice(int worker_id, int num_workers) {
+  struct slices slice;
+  slice.from = worker_id * (rows - 2) / num_workers + 1;
+  slice.to = ((worker_id + 1) * (rows - 2)) / num_workers + 1;
+  return slice;
 }

@@ -16,7 +16,6 @@
 int x, y;
 int columns;
 int rows;
-double maxdiff = 99999.9;
 int numIters = 0;
 
 static void Coordinator(int numWorkers, int x, int y, double epsilon);
@@ -32,12 +31,13 @@ struct slices {
 
 
 void *worker(int id, int numWorkers, int thread_count, double eps) {
+  double maxdiff = 99999.9;
   /* get slice information */
   struct slices slice = calculateSlice(id-1, numWorkers);
   int height = slice.to - slice.from + 2;
 
-   // allocate memory for own share of grid 
-  double *grid1; 
+   // allocate memory for own share of grid
+  double *grid1;
   double *grid2;
   grid1 = (double *) malloc(sizeof(double) * x * height);
   grid2 = (double *) malloc(sizeof(double) * x * height);
@@ -47,7 +47,7 @@ void *worker(int id, int numWorkers, int thread_count, double eps) {
 
   printGrid(grid1, x, height);
 
-  int bottom_row_index = (slice.from - 1) * x; 
+  int bottom_row_index = (slice.from - 1) * x;
   int top_row_index = (slice.to) * x;
 
     printf("id=%d, bottom index=%d, top_index=%d\n", id, bottom_row_index, top_row_index);
@@ -75,7 +75,7 @@ void *worker(int id, int numWorkers, int thread_count, double eps) {
             grid2[IDX(x,i,j)] = (grid1[IDX(x,i-1,j)] + grid1[IDX(x,i+1,j)] +
                      grid1[IDX(x,i,j-1)] + grid1[IDX(x,i,j+1)]) * 0.25;
             printf("%f ", grid2[IDX(x,i,j)]);
-            printf("%f, %f, %f, %f\n", grid1[IDX(x,i-1,j)], grid1[IDX(x,i+1,j)], 
+            printf("%f, %f, %f, %f\n", grid1[IDX(x,i-1,j)], grid1[IDX(x,i+1,j)],
                      grid1[IDX(x,i,j-1)], grid1[IDX(x,i,j+1)]);
           }
         }
@@ -88,21 +88,21 @@ void *worker(int id, int numWorkers, int thread_count, double eps) {
       #pragma omp single
       {
         numIters = numIters + 1;
-        
+
         /* swap grids */
         double *tempGrid = grid1;
         grid1 = grid2;
         grid2 = tempGrid;
       }
 
-      #pragma omp single 
+      #pragma omp single
       {
         /* send top and bottom rows */
         if (id % 2 == 0) {
           /* recv down */
           if (id > 1) {
             MPI_Recv(bottom_pointer, x, MPI_DOUBLE, id-1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-          } 
+          }
           /* recv up */
           if (id < numWorkers) {
             MPI_Recv(top_pointer, x, MPI_DOUBLE, id+1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
@@ -127,7 +127,7 @@ void *worker(int id, int numWorkers, int thread_count, double eps) {
           if (id > 1) {
             MPI_Send(bottom_pointer, x, MPI_DOUBLE, id-1, 0, MPI_COMM_WORLD);
           }
-          
+
           /* recv up */
           if (id < numWorkers) {
             MPI_Recv(top_pointer, x, MPI_DOUBLE, id+1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
@@ -135,10 +135,10 @@ void *worker(int id, int numWorkers, int thread_count, double eps) {
           /* recv down */
           if (id > 1) {
             MPI_Recv(bottom_pointer, x, MPI_DOUBLE, id-1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-          } 
+          }
         }
       }
-      
+
       /* compute the maximum difference into global variable */
       maxdiff=0;
       #pragma omp for reduction(max: maxdiff)
@@ -159,7 +159,7 @@ void *worker(int id, int numWorkers, int thread_count, double eps) {
         MPI_Send(&maxdiff, 1, MPI_DOUBLE, COORDINATOR, 0, MPI_COMM_WORLD);
         /* find out if we converged */
         MPI_Bcast(&notConverged, 1, MPI_INT, COORDINATOR, MPI_COMM_WORLD);
-      
+
       }
     }
   }
@@ -215,7 +215,7 @@ int main(int argc, char* argv[]) {
 
 
   /* read grid from standard in */
-  // 
+  //
 
   /* timing code for benchmarks */
   struct timeval start;
@@ -251,11 +251,11 @@ static void Coordinator(int numWorkers, int x, int y, double epsilon) {
   /* allocate memory for two grids */
   double *grid1;
   grid1=(double *) malloc(sizeof(double) * x * y);
-     
+
   /* read grid from standard in */
   InitializeGrids(grid1);
-    
-   // send grid slices to workers 
+
+   // send grid slices to workers
   for (int i = 1; i <= numWorkers; i++) {
     struct slices slice = calculateSlice(i-1, numWorkers);
     int index = (slice.from-1) * x;
@@ -298,7 +298,7 @@ static void Coordinator(int numWorkers, int x, int y, double epsilon) {
         MPI_INT,
         COORDINATOR,
         MPI_COMM_WORLD);
-  }  
+  }
     printf("fnished loop, gonna get hcunks now\n");
 
   /* collect chunks */

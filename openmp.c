@@ -166,7 +166,7 @@ void *worker(int id, int numWorkers, int thread_count, double eps) {
 
   /* send grid to coordiinator */
     MPI_Send(grid1+x, x * (height-2), MPI_DOUBLE, COORDINATOR, 0, MPI_COMM_WORLD);
-    printGrid(grid1+x, x, height-2);
+    printGrid(grid1, x, height);
 
 
   return NULL;

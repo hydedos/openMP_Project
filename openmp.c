@@ -47,11 +47,14 @@ void *worker(int id, int numWorkers, int thread_count, double eps) {
 
   printGrid(grid1, x, height);
 
-  int bottom_row_index = (slice.from - 1) * x;
-  int top_row_index = (slice.to) * x;
+  int fake_bottom_row_index = (slice.from - 1) * x;
+  int fake_top_row_index = (slice.to) * x;
+  int real_bottom_row_index = (slice.from) * x;
+  int real_top_row_index = (slice.to-1) * x;
 
-    printf("id=%d, bottom index=%d, top_index=%d\n", id, bottom_row_index, top_row_index);
+  //   printf("id=%d, bottom index=%d, top_index=%d\n", id, bottom_row_index, top_row_index);
   printf("x=%d, slice.from=%d, slice.to=%d\n", x, slice.from, slice.to);
+  printf("fakebottom=%d, faketop=%d\n", fake_bottom_row_index, fake_top_row_index);
 
 
 
@@ -65,8 +68,6 @@ void *worker(int id, int numWorkers, int thread_count, double eps) {
   {
     printf("doing calculations \n");
     while (notConverged) {
-      double *bottom_pointer = grid1 + bottom_row_index;
-      double *top_pointer = grid1 + top_row_index;
       #pragma omp for private (i, j, temp)
         for (i = 1; i < height-1; i++) {
           printf("row=%d\n", i);
@@ -95,46 +96,59 @@ void *worker(int id, int numWorkers, int thread_count, double eps) {
         grid2 = tempGrid;
       }
 
+      printf("exchanging top and bottom \n");
       #pragma omp single
       {
+        double *fake_bottom_pointer = grid1 + fake_bottom_row_index;
+        double *fake_top_pointer = grid1 + fake_top_row_index;
+        double *real_bottom_pointer = grid1 + real_bottom_row_index;
+        double *real_top_pointer = grid1 + real_top_row_index;
+
+        printf("printing real_top_pointer \n");
+        printGrid(real_top_pointer, x, 1);
+        printf("\n");
+
+        printf("printing real_bottom_pointer \n");
+        printGrid(real_bottom_pointer, x, 1);
+        printf("\n");
         /* send top and bottom rows */
         if (id % 2 == 0) {
           /* recv down */
           if (id > 1) {
-            MPI_Recv(bottom_pointer, x, MPI_DOUBLE, id-1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            MPI_Recv(fake_bottom_pointer, x, MPI_DOUBLE, id-1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
           }
           /* recv up */
           if (id < numWorkers) {
-            MPI_Recv(top_pointer, x, MPI_DOUBLE, id+1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            MPI_Recv(fake_top_pointer, x, MPI_DOUBLE, id+1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
           }
 
           /* send down */
           if (id > 1) {
-            MPI_Send(bottom_pointer, x, MPI_DOUBLE, id-1, 0, MPI_COMM_WORLD);
+            MPI_Send(real_bottom_pointer, x, MPI_DOUBLE, id-1, 0, MPI_COMM_WORLD);
           }
           /* send up */
           if (id < numWorkers) {
-            MPI_Send(top_pointer, x, MPI_DOUBLE, id+1, 0, MPI_COMM_WORLD);
+            MPI_Send(real_top_pointer, x, MPI_DOUBLE, id+1, 0, MPI_COMM_WORLD);
           }
           /* rec down recv up
              send down send up */
         } else {
           /* send up */
           if (id < numWorkers) {
-            MPI_Send(top_pointer, x, MPI_DOUBLE, id+1, 0, MPI_COMM_WORLD);
+            MPI_Send(real_top_pointer, x, MPI_DOUBLE, id+1, 0, MPI_COMM_WORLD);
           }
           /* send down */
           if (id > 1) {
-            MPI_Send(bottom_pointer, x, MPI_DOUBLE, id-1, 0, MPI_COMM_WORLD);
+            MPI_Send(real_bottom_pointer, x, MPI_DOUBLE, id-1, 0, MPI_COMM_WORLD);
           }
 
           /* recv up */
           if (id < numWorkers) {
-            MPI_Recv(top_pointer, x, MPI_DOUBLE, id+1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            MPI_Recv(fake_top_pointer, x, MPI_DOUBLE, id+1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
           }
           /* recv down */
           if (id > 1) {
-            MPI_Recv(bottom_pointer, x, MPI_DOUBLE, id-1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            MPI_Recv(fake_bottom_pointer, x, MPI_DOUBLE, id-1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
           }
         }
       }
@@ -155,6 +169,7 @@ void *worker(int id, int numWorkers, int thread_count, double eps) {
       /* communicate using MPI */
       #pragma omp single
       {
+        printGrid(grid1, x, height);
         /* send max diff */
         MPI_Send(&maxdiff, 1, MPI_DOUBLE, COORDINATOR, 0, MPI_COMM_WORLD);
         /* find out if we converged */

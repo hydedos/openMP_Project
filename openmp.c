@@ -47,14 +47,16 @@ void *worker(int id, int numWorkers, int thread_count, double eps) {
 
   printGrid(grid1, x, height);
 
-  int fake_bottom_row_index = (slice.from - 1) * x;
-  int fake_top_row_index = (slice.to) * x;
-  int real_bottom_row_index = (slice.from) * x;
-  int real_top_row_index = (slice.to-1) * x;
+  int fake_bottom_row_index = 0;
+  int fake_top_row_index = (height-1) * x;
+  int real_bottom_row_index = 1 * x;
+  int real_top_row_index = (height-2) * x;
 
   //   printf("id=%d, bottom index=%d, top_index=%d\n", id, bottom_row_index, top_row_index);
   printf("x=%d, slice.from=%d, slice.to=%d\n", x, slice.from, slice.to);
   printf("fakebottom=%d, faketop=%d\n", fake_bottom_row_index, fake_top_row_index);
+  printf("fakebottom=%d, faketop=%d\n", fake_bottom_row_index, fake_top_row_index);
+
 
 
 
@@ -232,11 +234,7 @@ int main(int argc, char* argv[]) {
   /* read grid from standard in */
   //
 
-  /* timing code for benchmarks */
-  struct timeval start;
-  struct timeval end;
-  struct timeval result;
-  gettimeofday(&start, NULL);
+
 
   if (myid == COORDINATOR) {
     Coordinator(numWorkers, x, y, epsilon);
@@ -252,13 +250,12 @@ int main(int argc, char* argv[]) {
   /* ceanup MPI */
   MPI_Finalize();
 
-  gettimeofday(&end, NULL);
-  timersub(&end, &start, &result);
 
 
 
 
-  fprintf(stderr, "%d, %lf, %d, %2ld, %7ld\n", threads, epsilon, numIters, result.tv_sec, result.tv_usec);
+
+  fprintf(stderr, "%d, %lf, %d", threads, epsilon, numIters);
   return 0;
 }
 
@@ -269,6 +266,12 @@ static void Coordinator(int numWorkers, int x, int y, double epsilon) {
 
   /* read grid from standard in */
   InitializeGrids(grid1);
+
+  /* timing code for benchmarks */
+  struct timeval start;
+  struct timeval end;
+  struct timeval result;
+  gettimeofday(&start, NULL);
 
    // send grid slices to workers
   for (int i = 1; i <= numWorkers; i++) {
@@ -315,6 +318,12 @@ static void Coordinator(int numWorkers, int x, int y, double epsilon) {
         MPI_COMM_WORLD);
   }
     printf("fnished loop, gonna get hcunks now\n");
+
+    /* end timer */
+  gettimeofday(&end, NULL);
+  timersub(&end, &start, &result);
+  fprintf(stderr, "%2ld, %7ld\n", result.tv_sec, result.tv_usec);
+
 
   /* collect chunks */
   for (int i = 1; i <= numWorkers; i++) {

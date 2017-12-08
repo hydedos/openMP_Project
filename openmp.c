@@ -47,7 +47,7 @@ void *worker(int id, int numWorkers, int thread_count, double eps) {
   MPI_Recv(grid1, x * height, MPI_DOUBLE, COORDINATOR, 0, MPI_COMM_WORLD, NULL);
   memcpy(grid2, grid1, x*height*sizeof(double));
 
-  printGrid(grid1, x, height);
+  //printGrid(grid1, x, height);
 
   int fake_bottom_row_index = 0;
   int fake_top_row_index = (height-1) * x;
@@ -175,6 +175,7 @@ void *worker(int id, int numWorkers, int thread_count, double eps) {
       {
         //printGrid(grid1, x, height);
         /* send max diff */
+	//printf("%lf \n",maxdiff);
         MPI_Send(&maxdiff, 1, MPI_DOUBLE, COORDINATOR, 0, MPI_COMM_WORLD);
         /* find out if we converged */
         MPI_Bcast(&notConverged, 1, MPI_INT, COORDINATOR, MPI_COMM_WORLD);
@@ -239,8 +240,10 @@ int main(int argc, char* argv[]) {
 
   /* read grid from standard in */
   //
-
-
+  //char procname[MPI_MAX_PROCESSOR_NAME];
+  //int length;
+  //MPI_Get_processor_name(procname, &length);
+  //printf("%s",procname);
 
   if (myid == COORDINATOR) {
     Coordinator(numWorkers, x, y, epsilon);
@@ -325,11 +328,9 @@ static void Coordinator(int numWorkers, int x, int y, double epsilon) {
   //char sresult[100];
 //  snprintf(sresult,100, "%d, %lf, %d", threads, epsilon, numIters);
  // snprintf(sresult,100, "%2ld, %7ld\n", result.tv_sec, result.tv_usec);
- // printf("chirp");  
 //MPI_File f;
   //MPI_File_open(MPI_COMM_WORLD, "data.txt", MPI_MODE_WRONLY, MPI_INFO_NULL, &f);
   //int bufsize = strlen(sresult);
-//printf("wop");
   //MPI_File_write(f, sresult, 100, MPI_DOUBLE, MPI_STATUS_IGNORE);
 	//printf("strlen = %d \n", bufsize);
   
@@ -343,7 +344,7 @@ static void Coordinator(int numWorkers, int x, int y, double epsilon) {
   }
 
  fprintf(stderr,", %2ld, %7ld\n", result.tv_sec, result.tv_usec);
-  printGrid(grid1, x, y);
+  //printGrid(grid1, x, y);
 
   free(grid1);
 }

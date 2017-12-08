@@ -1,1 +1,1 @@
-mpirun -np 5 --hostfile 4hosts --output-filename output/outjacobimpi --tag-output jacobimpi 4 .05 100 100
+mpirun -np 4 --map-by node --hostfile 4hosts --output-filename output/outjacobimpi --tag-output jacobimpi 6 .0001 500 500 ./testMatrixes/ones500.mtx

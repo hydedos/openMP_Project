@@ -14,6 +14,8 @@
 #define IDX(x, i, j) ((i)*(x)+(j))
 #define COORDINATOR 0
 int x, y;
+int threads;
+double epsilon;
 int columns;
 int rows;
 int numIters = 0;
@@ -53,9 +55,9 @@ void *worker(int id, int numWorkers, int thread_count, double eps) {
   int real_top_row_index = (height-2) * x;
 
   //   printf("id=%d, bottom index=%d, top_index=%d\n", id, bottom_row_index, top_row_index);
-  printf("x=%d, slice.from=%d, slice.to=%d\n", x, slice.from, slice.to);
-  printf("fakebottom=%d, faketop=%d\n", fake_bottom_row_index, fake_top_row_index);
-  printf("fakebottom=%d, faketop=%d\n", fake_bottom_row_index, fake_top_row_index);
+  //printf("x=%d, slice.from=%d, slice.to=%d\n", x, slice.from, slice.to);
+  //printf("fakebottom=%d, faketop=%d\n", fake_bottom_row_index, fake_top_row_index);
+  //printf("fakebottom=%d, faketop=%d\n", fake_bottom_row_index, fake_top_row_index);
 
 
 
@@ -68,22 +70,22 @@ void *worker(int id, int numWorkers, int thread_count, double eps) {
 
   #pragma omp parallel num_threads(thread_count) shared(numIters, grid1, grid2)
   {
-    printf("doing calculations \n");
+    //printf("doing calculations \n");
     while (notConverged) {
       #pragma omp for private (i, j, temp)
         for (i = 1; i < height-1; i++) {
-          printf("row=%d\n", i);
+          //printf("row=%d\n", i);
           for (j = 1; j < columns-1; j++) {
-            printf("col=%d\n", j);
+           // printf("col=%d\n", j);
             grid2[IDX(x,i,j)] = (grid1[IDX(x,i-1,j)] + grid1[IDX(x,i+1,j)] +
                      grid1[IDX(x,i,j-1)] + grid1[IDX(x,i,j+1)]) * 0.25;
-            printf("%f ", grid2[IDX(x,i,j)]);
-            printf("%f, %f, %f, %f\n", grid1[IDX(x,i-1,j)], grid1[IDX(x,i+1,j)],
-                     grid1[IDX(x,i,j-1)], grid1[IDX(x,i,j+1)]);
+            //printf("%f ", grid2[IDX(x,i,j)]);
+            //printf("%f, %f, %f, %f\n", grid1[IDX(x,i-1,j)], grid1[IDX(x,i+1,j)],
+           //          grid1[IDX(x,i,j-1)], grid1[IDX(x,i,j+1)]);
           }
         }
 
-    printf("swapping grids\n");
+    //printf("swapping grids\n");
 
 
 
@@ -98,7 +100,7 @@ void *worker(int id, int numWorkers, int thread_count, double eps) {
         grid2 = tempGrid;
       }
 
-      printf("exchanging top and bottom \n");
+      //printf("exchanging top and bottom \n");
       #pragma omp single
       {
         double *fake_bottom_pointer = grid1 + fake_bottom_row_index;
@@ -106,13 +108,13 @@ void *worker(int id, int numWorkers, int thread_count, double eps) {
         double *real_bottom_pointer = grid1 + real_bottom_row_index;
         double *real_top_pointer = grid1 + real_top_row_index;
 
-        printf("printing real_top_pointer \n");
-        printGrid(real_top_pointer, x, 1);
-        printf("\n");
+        //printf("printing real_top_pointer \n");
+        //printGrid(real_top_pointer, x, 1);
+        //printf("\n");
 
-        printf("printing real_bottom_pointer \n");
-        printGrid(real_bottom_pointer, x, 1);
-        printf("\n");
+        //printf("printing real_bottom_pointer \n");
+        //printGrid(real_bottom_pointer, x, 1);
+        //printf("\n");
         /* send top and bottom rows */
         if (id % 2 == 0) {
           /* recv down */
@@ -171,7 +173,7 @@ void *worker(int id, int numWorkers, int thread_count, double eps) {
       /* communicate using MPI */
       #pragma omp single
       {
-        printGrid(grid1, x, height);
+        //printGrid(grid1, x, height);
         /* send max diff */
         MPI_Send(&maxdiff, 1, MPI_DOUBLE, COORDINATOR, 0, MPI_COMM_WORLD);
         /* find out if we converged */
@@ -179,13 +181,16 @@ void *worker(int id, int numWorkers, int thread_count, double eps) {
 
       }
     }
+    #pragma omp single
+    {
+      if (id == 1) {
+        fprintf(stderr, "%d, %lf, %d", threads, epsilon, numIters);
+      }
+    }
   }
-
   /* send grid to coordiinator */
     MPI_Send(grid1+x, x * (height-2), MPI_DOUBLE, COORDINATOR, 0, MPI_COMM_WORLD);
-    printGrid(grid1, x, height);
-
-
+    //printGrid(grid1, x, height);
   return NULL;
 }
 void InitializeGrids(double *grid1) {
@@ -222,8 +227,8 @@ int main(int argc, char* argv[]) {
     exit(1);
   }
 
-  int threads = atoi(argv[1]);
-  double epsilon = atof(argv[2]);
+  threads = atoi(argv[1]);
+  epsilon = atof(argv[2]);
   x = atoi(argv[3]);
   y = atoi(argv[4]);
   filename = (argv[5]);
@@ -251,12 +256,6 @@ int main(int argc, char* argv[]) {
   /* ceanup MPI */
   MPI_Finalize();
 
-
-
-
-
-
-  fprintf(stderr, "%d, %lf, %d", threads, epsilon, numIters);
   return 0;
 }
 
@@ -279,7 +278,7 @@ static void Coordinator(int numWorkers, int x, int y, double epsilon) {
     struct slices slice = calculateSlice(i-1, numWorkers);
     int index = (slice.from-1) * x;
     int count = slice.to - slice.from + 2;
-    printf("attmepting to send to id=%d\n", i);
+    //printf("attmepting to send to id=%d\n", i);
     MPI_Send(
       grid1+index,
       count * x,
@@ -305,7 +304,7 @@ static void Coordinator(int numWorkers, int x, int y, double epsilon) {
         }
       }
 
-      printf("maxdif=%f\n", maxDiff);
+      //printf("maxdif=%f\n", maxDiff);
       if (maxDiff < epsilon) {
         notConverged = 0;
       }
@@ -318,24 +317,32 @@ static void Coordinator(int numWorkers, int x, int y, double epsilon) {
         COORDINATOR,
         MPI_COMM_WORLD);
   }
-    printf("finished loop, gonna get chunks now\n");
+    //printf("finished loop, gonna get chunks now\n");
 
     /* end timer */
   gettimeofday(&end, NULL);
   timersub(&end, &start, &result);
-  fprintf(stderr, "%2ld, %7ld\n", result.tv_sec, result.tv_usec);
-
-
+  //char sresult[100];
+//  snprintf(sresult,100, "%d, %lf, %d", threads, epsilon, numIters);
+ // snprintf(sresult,100, "%2ld, %7ld\n", result.tv_sec, result.tv_usec);
+ // printf("chirp");  
+//MPI_File f;
+  //MPI_File_open(MPI_COMM_WORLD, "data.txt", MPI_MODE_WRONLY, MPI_INFO_NULL, &f);
+  //int bufsize = strlen(sresult);
+//printf("wop");
+  //MPI_File_write(f, sresult, 100, MPI_DOUBLE, MPI_STATUS_IGNORE);
+	//printf("strlen = %d \n", bufsize);
+  
   /* collect chunks */
   for (int i = 1; i <= numWorkers; i++) {
-    printf("collecting chunk from id=%d\n", i);
+    //printf("collecting chunk from id=%d\n", i);
     struct slices slice = calculateSlice(i-1, numWorkers);
     int index = (slice.from) * x;
     int count = slice.to - slice.from;
     MPI_Recv(grid1 + index, count * x, MPI_DOUBLE, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
   }
 
-
+ fprintf(stderr,", %2ld, %7ld\n", result.tv_sec, result.tv_usec);
   printGrid(grid1, x, y);
 
   free(grid1);

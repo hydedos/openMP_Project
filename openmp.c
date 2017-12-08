@@ -17,7 +17,7 @@ int x, y;
 int columns;
 int rows;
 int numIters = 0;
-
+char *filename;
 static void Coordinator(int numWorkers, int x, int y, double epsilon);
 void printGrid(double *grid, int x, int y);
 
@@ -191,7 +191,7 @@ void *worker(int id, int numWorkers, int thread_count, double eps) {
 void InitializeGrids(double *grid1) {
   /* open file */
   char mode = 'r';
-  FILE *f = fopen("testMatrixes/ones10.mtx", &mode);
+  FILE *f = fopen(filename, &mode);
 
   int i, j;
   double d;
@@ -217,8 +217,8 @@ int main(int argc, char* argv[]) {
   MPI_Comm_size(MPI_COMM_WORLD, &numWorkers);  /* how many processes? */
   numWorkers--;
 
-  if (argc != 5) {
-    fprintf(stderr, "Usage:\n%s <threads> <epsilon> <rows> <columns>\n", argv[0]);
+  if (argc != 6) {
+    fprintf(stderr, "Usage:\n%s <threads> <epsilon> <rows> <columns> <file name>\n", argv[0]);
     exit(1);
   }
 
@@ -226,6 +226,7 @@ int main(int argc, char* argv[]) {
   double epsilon = atof(argv[2]);
   x = atoi(argv[3]);
   y = atoi(argv[4]);
+  filename = (argv[5]);
   rows = y;
   columns = x;
 
@@ -317,7 +318,7 @@ static void Coordinator(int numWorkers, int x, int y, double epsilon) {
         COORDINATOR,
         MPI_COMM_WORLD);
   }
-    printf("fnished loop, gonna get hcunks now\n");
+    printf("finished loop, gonna get chunks now\n");
 
     /* end timer */
   gettimeofday(&end, NULL);
